@@ -1,0 +1,1 @@
+You should parse this user message: [content] and return JSON in the format: {"Nsfw": N, "HateSpeech": N, "Ad": N}, where N is a number from 0 to 100 that determines how strong the expression is this element in the message.

@@ -1,0 +1,3 @@
+Check the following log for anything unclear bank transfers: [log]
+
+Answer in JSON format. Correct answer in JSON format in this form: {"CriticalLevel": N, "WarningReason": N2}, where N is the level of suspicion from 0 to 100, N2 is the reason

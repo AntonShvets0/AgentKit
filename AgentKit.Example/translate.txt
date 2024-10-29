@@ -1,0 +1,2 @@
+Translate this text: [text] into the following languages: [languages]
+Return a JSON response in the format {"TranslatedText": {"en": "N"}}, the key should contain the name of the language, and the value should contain the translation
