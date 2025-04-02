@@ -32,6 +32,7 @@ public class ToolParameterCompilerService
     {
         var parameters = new ToolParameter
         {
+            Type = "object",
             Required = new string[] { },
             Properties = new Dictionary<string, ToolParameter>()
         };
@@ -48,8 +49,30 @@ public class ToolParameterCompilerService
             if (_typeResolver.IsParameterRequired(param))
                 requiredParams.Add(param.Name!);
 
+            // Если это массив, создаем специальную схему для массива
+            if (IsArrayType(param.ParameterType))
+            {
+                var elementType = param.ParameterType.GetElementType() 
+                                 ?? (param.ParameterType.IsGenericType 
+                                    ? param.ParameterType.GetGenericArguments()[0] 
+                                    : typeof(object));
+                
+                var itemParameter = IsComplexType(elementType) 
+                    ? SchemaGenerator.GenerateSchema(elementType) 
+                    : new ToolParameter { Type = _typeResolver.GetParameterType(elementType) };
+                
+                // Убираем null-поля из схемы элемента
+                RemoveNullFields(itemParameter);
+                
+                parameters.Properties[param.Name!] = new ToolParameter
+                {
+                    Type = "array",
+                    Description = description,
+                    Items = itemParameter
+                };
+            }
             // Для сложных типов генерируем полную схему
-            if (IsComplexType(param.ParameterType))
+            else if (IsComplexType(param.ParameterType))
             {
                 parameters.Properties[param.Name!] = SchemaGenerator.GenerateSchema(param.ParameterType);
                 parameters.Properties[param.Name!].Description = description;
@@ -67,6 +90,10 @@ public class ToolParameterCompilerService
         }
 
         parameters.Required = requiredParams.ToArray();
+        
+        // Чистим схему от null-полей
+        RemoveNullFields(parameters);
+        
         return parameters;
     }
 
@@ -86,6 +113,16 @@ public class ToolParameterCompilerService
             && type != typeof(string)
             && !type.IsArray
             && !typeof(IEnumerable<>).IsAssignableFrom(type);
+    }
+
+    private bool IsArrayType(Type type)
+    {
+        return type.IsArray || 
+               (type.IsGenericType && 
+                (type.GetGenericTypeDefinition() == typeof(List<>) || 
+                 type.GetGenericTypeDefinition() == typeof(IEnumerable<>) || 
+                 type.GetGenericTypeDefinition() == typeof(ICollection<>) || 
+                 type.GetGenericTypeDefinition() == typeof(IList<>)));
     }
 
     public object?[] PrepareArguments(
@@ -131,16 +168,16 @@ public class ToolParameterCompilerService
             if (jsonValue == null)
                 return GetDefaultValue(param);
 
+            // Для массивов
+            if (IsArrayType(param.ParameterType))
+            {
+                return ConvertArray(jsonValue, param.ParameterType);
+            }
+            
             // Для сложных типов используем специальную конвертацию
             if (IsComplexType(param.ParameterType))
             {
                 return _jsonConverter.ConvertJsonValue(jsonValue, param.ParameterType);
-            }
-
-            // Для коллекций
-            if (IsCollectionType(param.ParameterType))
-            {
-                return ConvertCollection(jsonValue, param.ParameterType);
             }
 
             // Для простых типов
@@ -151,28 +188,25 @@ public class ToolParameterCompilerService
         return GetDefaultValue(param);
     }
 
-    private bool IsCollectionType(Type type)
-    {
-        return type.IsArray || 
-               (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)) ||
-               (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>));
-    }
-
-    private object? ConvertCollection(JsonNode jsonValue, Type collectionType)
+    private object? ConvertArray(JsonNode jsonValue, Type arrayType)
     {
         // Если это не массив в JSON, выбрасываем исключение
         if (jsonValue is not JsonArray jsonArray)
-            throw new CompilerToolException(null, $"Expected array for type {collectionType.Name}");
+            throw new CompilerToolException(null, $"Expected array for type {arrayType.Name}");
 
-        // Определяем тип элементов коллекции
+        // Определяем тип элементов массива
         Type elementType;
-        if (collectionType.IsArray)
+        if (arrayType.IsArray)
         {
-            elementType = collectionType.GetElementType()!;
+            elementType = arrayType.GetElementType()!;
+        }
+        else if (arrayType.IsGenericType)
+        {
+            elementType = arrayType.GetGenericArguments()[0];
         }
         else
         {
-            elementType = collectionType.GetGenericArguments()[0];
+            throw new CompilerToolException(null, $"Cannot determine element type for {arrayType.Name}");
         }
 
         // Создаем список нужного типа
@@ -186,11 +220,48 @@ public class ToolParameterCompilerService
         }
 
         // Если нужен массив, конвертируем список в массив
-        if (collectionType.IsArray)
+        if (arrayType.IsArray)
         {
             var array = Array.CreateInstance(elementType, list.Count);
             list.CopyTo(array, 0);
             return array;
+        }
+        
+        // Если нужен конкретный тип коллекции
+        if (arrayType.IsGenericType)
+        {
+            // Если нужно вернуть IEnumerable<T>, можно вернуть список, так как он реализует этот интерфейс
+            if (arrayType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                return list;
+            }
+            
+            // Для ICollection<T>, IList<T> или List<T> возвращаем список, так как он реализует эти интерфейсы
+            if (arrayType.GetGenericTypeDefinition() == typeof(List<>) ||
+                arrayType.GetGenericTypeDefinition() == typeof(IList<>) ||
+                arrayType.GetGenericTypeDefinition() == typeof(ICollection<>))
+            {
+                return list;
+            }
+            
+            // Для других типов генериков (редкий случай) пытаемся создать экземпляр
+            try
+            {
+                var instance = Activator.CreateInstance(arrayType);
+                // Если это коллекция, пытаемся добавить элементы
+                if (instance is IList typedList)
+                {
+                    foreach (var item in list)
+                    {
+                        typedList.Add(item);
+                    }
+                }
+                return instance;
+            }
+            catch (Exception ex)
+            {
+                throw;
+            }
         }
 
         return list;
@@ -205,5 +276,39 @@ public class ToolParameterCompilerService
             return null;
 
         throw new CompilerToolException(null, $"Required parameter {param.Name} was not provided");
+    }
+    
+    /// <summary>
+    /// Удаляет все поля со значением null из ToolParameter
+    /// </summary>
+    private void RemoveNullFields(ToolParameter parameter)
+    {
+        if (parameter == null) return;
+        
+        // Если тип не задан, устанавливаем object для корневых объектов
+        if (parameter.Type == null)
+        {
+            parameter.Type = "object";
+        }
+        
+        // Удаляем null-поля
+        if (parameter.Description == null) parameter.Description = null;
+        if (parameter.Enum == null || !parameter.Enum.Any()) parameter.Enum = null;
+        if (parameter.Required == null || !parameter.Required.Any()) parameter.Required = null;
+        
+        // Рекурсивно обрабатываем properties
+        if (parameter.Properties != null)
+        {
+            foreach (var prop in parameter.Properties.Values)
+            {
+                RemoveNullFields(prop);
+            }
+        }
+        
+        // Рекурсивно обрабатываем items
+        if (parameter.Items != null)
+        {
+            RemoveNullFields(parameter.Items);
+        }
     }
 }

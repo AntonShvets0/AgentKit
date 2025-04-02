@@ -2,7 +2,9 @@
 
 public enum InferenceType
 {
+    Primary,
     Big,
     Middle,
-    Small
+    Small,
+    Ultra
 }

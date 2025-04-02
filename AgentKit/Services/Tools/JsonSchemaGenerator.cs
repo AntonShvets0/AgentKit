@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AgentKit.Models;
 
 namespace AgentKit.Services.Tools;
@@ -17,6 +18,21 @@ public class JsonSchemaGenerator
     
     private ToolParameter GetParameterSchema(Type type, string description)
     {
+        // Обработка массивов и коллекций
+        if (type.IsArray || (type.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(type)))
+        {
+            Type elementType = type.IsArray 
+                ? type.GetElementType() 
+                : type.GetGenericArguments()[0];
+            
+            return new ToolParameter
+            {
+                Type = "array",
+                Description = description,
+                Items = GetParameterSchema(elementType, $"Item of {description}")
+            };
+        }
+
         var schema = new ToolParameter
         {
             Type = _parameterTypeResolver.GetParameterType(type),
@@ -59,12 +75,27 @@ public class JsonSchemaGenerator
     {
         return JsonSerializer.Serialize(parameter, new JsonSerializerOptions
         {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         });
     }
     
     public ToolParameter GenerateSchema(Type type)
     {
+        // Обработка массивов на верхнем уровне
+        if (type.IsArray || (type.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(type)))
+        {
+            Type elementType = type.IsArray 
+                ? type.GetElementType() 
+                : type.GetGenericArguments()[0];
+            
+            return new ToolParameter
+            {
+                Type = "array",
+                Items = GetParameterSchema(elementType, $"Item of {type.Name}")
+            };
+        }
+
         var properties = new Dictionary<string, ToolParameter>();
         var required = new List<string>();
 
@@ -89,7 +120,7 @@ public class JsonSchemaGenerator
         {
             Type = "object",
             Properties = properties,
-            Required = required.ToArray()
+            Required = required.Count > 0 ? required.ToArray() : null
         };
     }
 }

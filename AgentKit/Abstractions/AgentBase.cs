@@ -42,9 +42,6 @@ public abstract class AgentBase<TRequest, TResponse> : IAgent, IDisposable
     {
         ThrowIfDisposed();
         
-        if (State != AgentState.Running)
-            throw new AgentIsNotStartedYetException("Agent must be in Running state to get prompts");
-
         if (string.IsNullOrEmpty(id))
             throw new ArgumentException("Prompt id cannot be null or empty", nameof(id));
 
@@ -53,12 +50,18 @@ public abstract class AgentBase<TRequest, TResponse> : IAgent, IDisposable
 
         var template = await Prompt.GetPromptAsync(id);
         var variables = new Dictionary<string, string>();
-            
-        foreach (var property in GetObjectProperties(parameters))
+        if (parameters is Dictionary<string, string> dict)
         {
-            variables[property.Key] = property.Value;
+            variables = dict;
         }
-
+        else
+        {
+            foreach (var property in GetObjectProperties(parameters))
+            {
+                variables[property.Key] = property.Value;
+            }
+        }
+            
         var prompt = template.Content;
         foreach (var (key, value) in variables)
         {

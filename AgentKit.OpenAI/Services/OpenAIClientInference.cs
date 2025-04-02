@@ -23,13 +23,25 @@ public abstract class OpenAIClientInference(
     : InferenceBase<OpenAIConfiguration>(toolCompilerService, configuration)
 {
     protected readonly ToolCompilerService _toolCompilerService = toolCompilerService;
-    public abstract OpenAIModel Model { get; protected set; }
-    
-    private OpenAIClient _client = new(new ApiKeyCredential(configuration.Token), new OpenAIClientOptions
-    {
-        Endpoint = new Uri(configuration.Endpoint ?? "https://api.openai.com")
-    });
+    public abstract string Model { get; protected set; }
+    protected virtual bool AllowedJsonSchema { get; } = false;
 
+    private OpenAIClient Client
+    {
+        get
+        {
+            if (configuration.Endpoint == null)
+            {
+                return new OpenAIClient(configuration.Token);
+            }
+
+            return new OpenAIClient(new ApiKeyCredential(configuration.Token), new OpenAIClientOptions
+            {
+                Endpoint = new Uri(configuration.Endpoint ?? "https://api.openai.com")
+            });
+        }
+    }
+    
     public override async Task<T?> CompleteChatAsync<T>(string message, InferenceChatCompletionOptions options, CompiledTool[] tools, IAgent source)
         where T : class
         => JsonSerializer.Deserialize<T>(await CompleteChatAsync(message, options, tools, source, typeof(T)));
@@ -37,7 +49,7 @@ public abstract class OpenAIClientInference(
     public override Task<string> CompleteChatAsync(string message, InferenceChatCompletionOptions options, CompiledTool[] tools, IAgent source)
         => CompleteChatAsync(message, options, tools, source, null);
 
-    public async Task<string> CompleteChatAsync(
+    public virtual async Task<string> CompleteChatAsync(
         string message, 
         InferenceChatCompletionOptions options, 
         CompiledTool[] tools, 
@@ -46,9 +58,7 @@ public abstract class OpenAIClientInference(
         )
     {
         var chatClient =
-            _client.GetChatClient(
-                Model.GetType().GetCustomAttribute<DescriptionAttribute>()?.Description ?? 
-                throw new ArgumentNullException(nameof(Model)));
+            Client.GetChatClient(Model);
         var convertedChatMessages = MergeChatMessages(Context.GetHistory())
             .Select(c =>
             {
@@ -68,11 +78,15 @@ public abstract class OpenAIClientInference(
                     _ => throw new InvalidOperationException()
                 });
             }).ToList();
+        if (!string.IsNullOrEmpty(message))
+        {
+            convertedChatMessages.Add(new UserChatMessage(message));
+        }
 
         var chatOptions = new ChatCompletionOptions
         {
             Temperature = options.Temperature,
-            ResponseFormat = jsonMode == null
+            ResponseFormat = jsonMode == null || !AllowedJsonSchema
                 ? ChatResponseFormat.CreateTextFormat()
                 : ChatResponseFormat.CreateJsonSchemaFormat(
                     "schema",
@@ -88,7 +102,6 @@ public abstract class OpenAIClientInference(
                 new BinaryData(_toolCompilerService.Parameter.SchemaGenerator.SerializeJsonSchema(compiledTool.Parameters)),
                 functionSchemaIsStrict: true));
         }
-        
         
         var response = await chatClient.CompleteChatAsync(convertedChatMessages, chatOptions);
         var handledMessage = await CallToolsAsync(response.Value, source, convertedChatMessages, tools, options);
@@ -121,7 +134,14 @@ public abstract class OpenAIClientInference(
         
         )
     {
-        if (response.ToolCalls.Count < 1)
+        try
+        {
+            if (response.ToolCalls == null || response.ToolCalls.Count < 1)
+            {
+                return new AssistantChatMessage(response);
+            }
+        }
+        catch
         {
             return new AssistantChatMessage(response);
         }
@@ -145,7 +165,7 @@ public abstract class OpenAIClientInference(
         }
         
         var chatClient =
-            _client.GetChatClient(
+            Client.GetChatClient(
                 Model.GetType().GetCustomAttribute<DescriptionAttribute>()?.Description ?? 
                 throw new ArgumentNullException(nameof(Model)));
 

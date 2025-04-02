@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentKit.Example", "AgentKi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StopWords", "StopWords\StopWords.csproj", "{B2727482-5B81-4B01-8DD9-0CD316163E53}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentKit.Gemini", "AgentKit.Gemini\AgentKit.Gemini.csproj", "{50C6B8DC-C2C9-4C2C-9008-74908B2908B7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{B2727482-5B81-4B01-8DD9-0CD316163E53}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2727482-5B81-4B01-8DD9-0CD316163E53}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2727482-5B81-4B01-8DD9-0CD316163E53}.Release|Any CPU.Build.0 = Release|Any CPU
+		{50C6B8DC-C2C9-4C2C-9008-74908B2908B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{50C6B8DC-C2C9-4C2C-9008-74908B2908B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{50C6B8DC-C2C9-4C2C-9008-74908B2908B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{50C6B8DC-C2C9-4C2C-9008-74908B2908B7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -11,12 +11,13 @@ public static class AgentExtension
 {
     public static IServiceCollection AddAgentKit(this IServiceCollection serviceCollection)
     {
+        serviceCollection.AddSingleton<ToolMethodRoutingService>();
         serviceCollection.AddSingleton<ToolCompilerService>();
         serviceCollection.AddSingleton<ToolMethodInvokerService>();
         serviceCollection.AddSingleton<ToolParameterCompilerService>();
         serviceCollection.AddSingleton<JsonValueConverter>();
         
-        serviceCollection.AddScoped<InferenceFactory>();
+        serviceCollection.AddScoped<IInferenceFactory, InferenceFactory>();
         serviceCollection.AddScoped<AgentFactory>();
         
         return serviceCollection;
@@ -25,7 +26,7 @@ public static class AgentExtension
     public static IServiceCollection AddAgent<T>(this IServiceCollection serviceCollection)
         where T : class, IAgent
     {
-        serviceCollection.AddScoped<T>();
+        serviceCollection.AddScoped<IAgent, T>();
         return serviceCollection;
     }
 
